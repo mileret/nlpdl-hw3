@@ -7,3 +7,5 @@ pretrained_models/
 pretrained/
 run_glue.py
 eval_results/
+*.out
+run_eval.sh
