@@ -3,7 +3,7 @@ import json
 import pdb
 import jsonlines
 
-from datasets import load_dataset, concatenate_datasets, Dataset, DatasetDict, ClassLabel, Value
+from datasets import load_dataset, concatenate_datasets, Dataset, DatasetDict, ClassLabel, Value, load_from_disk
 
 
 
@@ -196,17 +196,22 @@ def load_agnews_dataset(dataset_name):
     '''
     Load agnews dataset from hugingface datasets library.
     '''
+    load_from_local = True
 
-    # only use the test set
-    dataset = load_dataset("ag_news", split="test")
+    if load_from_local:
+        datasetDict = load_from_disk('dataset/agnews')
 
-    # convert dataset label from classLabel to int
-    new_feature = dataset.features.copy()
-    new_feature['label'] = Value('int64')
-    dataset = dataset.cast(new_feature)
+    else:
+        # only use the test set
+        dataset = load_dataset("ag_news", split="test")
 
-    # random split the dataset into training and test set
-    datasetDict = dataset.train_test_split(test_size=0.1, seed=2022)
+        # convert dataset label from classLabel to int
+        new_feature = dataset.features.copy()
+        new_feature['label'] = Value('int64')
+        dataset = dataset.cast(new_feature)
+
+        # random split the dataset into training and test set
+        datasetDict = dataset.train_test_split(test_size=0.1, seed=2022)
 
     return datasetDict
 
@@ -214,7 +219,7 @@ def load_agnews_dataset(dataset_name):
 
 # debug
 if __name__ == '__main__':
-    datasetDict = get_dataset(['laptop_sup', 'restaurant_sup', 'acl_sup', 'agnews_sup'], '<sep>')
+    datasetDict = get_dataset(['agnews_sup'], '<sep>')
     pdb.set_trace()
     print(datasetDict['train'][0])
     print(datasetDict['test'][0])

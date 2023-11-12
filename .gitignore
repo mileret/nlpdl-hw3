@@ -3,3 +3,7 @@ checkpoints/
 dataset/
 wandb/
 ContinualLM-main/
+pretrained_models/
+pretrained/
+run_glue.py
+
