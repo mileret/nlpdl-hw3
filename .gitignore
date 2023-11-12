@@ -6,3 +6,4 @@ ContinualLM-main/
 pretrained_models/
 pretrained/
 run_glue.py
+eval_results/

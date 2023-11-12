@@ -23,11 +23,11 @@ from dataHelper import get_dataset
 class MyArguments(TrainingArguments):
     # overwrite default values
     output_dir : str = field(default='./checkpoints')
-    num_train_epochs : int = field(default=20)
-    per_device_train_batch_size : int = field(default=128)
-    per_device_eval_batch_size : int = field(default=128)
+    num_train_epochs : int = field(default=30)
+    per_device_train_batch_size : int = field(default=64)
+    per_device_eval_batch_size : int = field(default=64)
     warmup_steps : int = field(default=0)
-    weight_decay : int= field(default=0.01)
+    weight_decay : int= field(default=0.1)
     logging_dir : str = field(default='./logs')
     logging_steps : int  = field(default=10)
     evaluation_strategy : str = field(default='steps')
@@ -41,7 +41,7 @@ class MyArguments(TrainingArguments):
     report_to : str = field(default='wandb')
     run_name : str = field(default='test')
     seed : int = field(default=2022)
-
+    learning_rate : float = field(default=1e-5)
     # add custom arguments
     dataset_name : str = field(default='restaurant_sup')
     model_name : str = field(default='bert-base-uncased')
@@ -52,7 +52,7 @@ class MyArguments(TrainingArguments):
     save_pretrained : bool = field(default=False)
 
     num_labels : int = field(default=3)
-    max_seq_length : int = field(default=32)
+    max_seq_length : int = field(default=128)
 
     eval_result_dir : str = field(default='./eval_results')
     
