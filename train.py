@@ -24,8 +24,8 @@ class MyArguments(TrainingArguments):
     # overwrite default values
     output_dir : str = field(default='./checkpoints')
     num_train_epochs : int = field(default=20)
-    per_device_train_batch_size : int = field(default=32)
-    per_device_eval_batch_size : int = field(default=32)
+    per_device_train_batch_size : int = field(default=128)
+    per_device_eval_batch_size : int = field(default=128)
     warmup_steps : int = field(default=0)
     weight_decay : int= field(default=0.01)
     logging_dir : str = field(default='./logs')
