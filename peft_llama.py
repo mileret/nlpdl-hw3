@@ -6,15 +6,23 @@ from dataclasses import dataclass, field
 import logging
 import json
 
-from transformers import (AutoTokenizer, 
-                          AutoModelForSequenceClassification, 
-                          AutoConfig, 
-                          Trainer, 
+from transformers import (Trainer, 
                           HfArgumentParser, 
                           TrainingArguments, 
                           set_seed, 
-                          DataCollatorWithPadding)
+                          DataCollatorWithPadding,
+                          LlamaForSequenceClassification,
+                          LlamaConfig,
+                          LlamaTokenizer,
+                          AutoModelForSequenceClassification,
+                          AutoConfig,
+                          AutoTokenizer
+                        )
 from transformers.integrations import WandbCallback
+
+from peft import LoraConfig, get_peft_model, TaskType
+import adapters
+
 
 from dataHelper import get_dataset
 
@@ -23,9 +31,9 @@ from dataHelper import get_dataset
 class MyArguments(TrainingArguments):
     # overwrite default values
     output_dir : str = field(default='./checkpoints')
-    num_train_epochs : int = field(default=30)
-    per_device_train_batch_size : int = field(default=64)
-    per_device_eval_batch_size : int = field(default=64)
+    num_train_epochs : int = field(default=7)
+    per_device_train_batch_size : int = field(default=8)
+    per_device_eval_batch_size : int = field(default=8)
     warmup_steps : int = field(default=0)
     weight_decay : int= field(default=0.1)
     logging_dir : str = field(default='./logs')
@@ -41,10 +49,11 @@ class MyArguments(TrainingArguments):
     report_to : str = field(default='wandb')
     run_name : str = field(default='test')
     seed : int = field(default=2022)
-    learning_rate : float = field(default=1e-5)
+    learning_rate : float = field(default=1e-4)
+    remove_unused_columns : bool = field(default=True)
     # add custom arguments
     dataset_name : str = field(default='restaurant_sup')
-    model_name : str = field(default='bert-base-uncased')
+    model_name : str = field(default='llama')
     load_from_local : bool = field(default=True)
     local_config_dir : str = field(default='./config')
     local_model_dir : str = field(default='./model')
@@ -55,6 +64,13 @@ class MyArguments(TrainingArguments):
     max_seq_length : int = field(default=128)
 
     eval_result_dir : str = field(default='./eval_results')
+
+    # lora arguments
+    lora_r : int = field(default=32)
+    use_lora : bool = field(default=False)
+
+    # adapter arguments
+    use_adapter : bool = field(default=False)
     
 
 def process_args(args) -> MyArguments:
@@ -62,6 +78,10 @@ def process_args(args) -> MyArguments:
     args.num_labels = dataset2label[args.dataset_name]
 
     args.run_name = f'{args.dataset_name}_{args.model_name}_seed{args.seed}'
+    if args.use_lora:
+        args.run_name += f'_lora{args.lora_r}'
+    elif args.use_adapter:
+        args.run_name += f'_adapter'
 
     if args.load_from_local:
         args.local_config_dir = f'./pretrained/{args.model_name}_config'
@@ -86,28 +106,55 @@ def train(args):
     # logging
     logging.basicConfig(level=logging.INFO)
 
-    # load pre-trained model and tokenizer
+    if args.use_lora:
+        # load pre-trained model and tokenizer
+        config = LlamaConfig.from_pretrained('pretrained/llama_config', num_labels = args.num_labels)
+        model = LlamaForSequenceClassification.from_pretrained('pretrained/llama_model', config=config)
+        tokenizer = LlamaTokenizer.from_pretrained('pretrained/llama_tokenizer')
 
-    config = AutoConfig.from_pretrained(args.model_name if not args.load_from_local else args.local_config_dir, 
-                                        num_labels=args.num_labels)
-    
-    model = AutoModelForSequenceClassification.from_pretrained(args.model_name if not args.load_from_local else args.local_model_dir,
-                                                               config=config, ignore_mismatched_sizes=True)
+        loraConfig = LoraConfig(
+        task_type=TaskType.SEQ_CLS, # important
+        inference_mode=False,
+        r=args.lora_r,
+        lora_alpha=32,
+        target_modules=["q_proj", "v_proj"],
+        lora_dropout=0.1,
+        bias="lora_only",
+        modules_to_save=["score"],
+        )
+        model = get_peft_model(model, loraConfig)
+        model.print_trainable_parameters()
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name if not args.load_from_local else args.local_tokenizer_dir)
+    elif args.use_adapter:
+        config = AutoConfig.from_pretrained(args.local_config_dir, num_labels = args.num_labels)
+        model = AutoModelForSequenceClassification.from_pretrained(args.local_model_dir, config=config)
+        adapters.init(model)
+        tokenizer = AutoTokenizer.from_pretrained(args.local_tokenizer_dir)
+
+        model.add_adapter("adapter")
+        model.set_active_adapters("adapter")
+        model.train_adapter("adapter")
+
+    else:
+        raise NotImplementationError()
 
     if args.save_pretrained:
         model.save_pretrained(f'./pretrained/{args.model_name}_model')
         tokenizer.save_pretrained(f'./pretrained/{args.model_name}_tokenizer')
         config.save_pretrained(f'./pretrained/{args.model_name}_config')
 
+    # add padding token
+    if tokenizer.pad_token is None:
+        tokenizer.add_special_tokens({'pad_token': tokenizer.eos_token})
+        model.resize_token_embeddings(len(tokenizer))
+
     # load dataset
-    datasetDict = get_dataset(args.dataset_name, tokenizer.sep_token)
+    datasetDict = get_dataset(args.dataset_name, tokenizer.eos_token)
 
     # tokenize
     def tokenize(examples):
         tokenized = tokenizer(examples['text'], padding=False, truncation=True, max_length=args.max_seq_length)
-        tokenized['label'] = examples['label']
+        tokenized['labels'] = examples['label']
         return tokenized
     
     train_dataset = datasetDict['train'].map(tokenize, batched=True)
@@ -162,7 +209,6 @@ def train(args):
     # logging message
     logging.info(f'eval_results: {eval_results}')
     
-    exit()
 
 if __name__ == '__main__':
 
